@@ -9,6 +9,7 @@ PASSWORD = os.getenv("Tasty@2461SML")
 
 session = requests.Session()
 
+
 def login_tastytrade():
     url = "https://api.tastyworks.com/sessions"
 
@@ -56,14 +57,9 @@ def webhook():
         print("BUY 1 TSLA")
 
     elif signal == "short":
-        print("SELL TSLA + SHORT 1")
+        print("SELL + SHORT 1 TSLA")
 
     else:
         print("Unknown signal")
 
     return jsonify({"status": "ok"})
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
