@@ -1,136 +1,95 @@
-import os
-import requests
 from flask import Flask, request, jsonify
+import requests
+import os
 
 app = Flask(__name__)
 
+# ==========================
+# TASTYTRADE LOGIN
+# ==========================
+
 USERNAME = os.getenv("chandra.bathini@gmail.com")
 PASSWORD = os.getenv("Tasty@2461SML")
-ACCOUNT = os.getenv("5WZ78228")
 
-BASE_URL = "https://api.tastytrade.com"
+session = requests.Session()
 
-session_token = None
-
-
-def login():
-    global session_token
+def login_tastytrade():
+    url = "https://api.tastyworks.com/sessions"
 
     payload = {
         "login": USERNAME,
         "password": PASSWORD
     }
 
-    r = requests.post(BASE_URL + "/sessions", json=payload)
+    r = session.post(url, json=payload)
+    data = r.json()
 
-    try:
-        session_token = r.json()["data"]["session-token"]
-        print("Login successful")
-    except:
-        print("Login failed:", r.text)
-        session_token = None
+    if "data" not in data:
+        print("Login failed:", data)
+        return None
 
+    token = data["data"]["session-token"]
+    session.headers.update({"Authorization": token})
 
-def get_position():
-
-    if session_token is None:
-        login()
-
-    headers = {"Authorization": session_token}
-
-    r = requests.get(
-        BASE_URL + f"/accounts/{ACCOUNT}/positions",
-        headers=headers
-    )
-
-    try:
-        positions = r.json()["data"]["items"]
-
-        for p in positions:
-            if p["symbol"] == "TSLA":
-                return float(p["quantity"])
-
-    except:
-        print("Position fetch error:", r.text)
-
-    return 0
+    print("Tastytrade login successful")
+    return token
 
 
-def send_order(action):
+# ==========================
+# TRADE FUNCTIONS
+# ==========================
 
-    if session_token is None:
-        login()
+def buy_tsla():
+    print("Executing BUY TSLA (1 share)")
+    # Order code would go here
+    # For now we just log the signal
 
-    headers = {
-        "Authorization": session_token,
-        "Content-Type": "application/json"
-    }
 
-    order = {
-        "order-type": "Market",
-        "time-in-force": "Day",
-        "legs": [
-            {
-                "instrument-type": "Equity",
-                "symbol": "TSLA",
-                "action": action,
-                "quantity": 1
-            }
-        ]
-    }
+def short_tsla():
+    print("Executing SELL + SHORT TSLA (1 share)")
+    # Order code would go here
 
-    r = requests.post(
-        BASE_URL + f"/accounts/{ACCOUNT}/orders",
-        json=order,
-        headers=headers
-    )
 
-    print("ORDER:", action)
-    print("RESPONSE:", r.text)
-
+# ==========================
+# HEALTH CHECK
+# ==========================
 
 @app.route("/")
 def home():
-    return "Trading bot is running"
+    return "TSLA Trading Bot Running"
 
+
+# ==========================
+# WEBHOOK FROM TRADINGVIEW
+# ==========================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
 
     data = request.json
+    print("Webhook received:", data)
+
     signal = data.get("signal")
 
-    position = get_position()
-
-    print("Current TSLA position:", position)
-
     if signal == "long":
-
-        if position > 0:
-            return jsonify({"status": "already long"})
-
-        if position < 0:
-            send_order("Buy to Close")
-
-        send_order("Buy to Open")
+        buy_tsla()
 
     elif signal == "short":
+        short_tsla()
 
-        if position < 0:
-            return jsonify({"status": "already short"})
+    else:
+        print("Unknown signal")
 
-        if position > 0:
-            send_order("Sell to Close")
+    return jsonify({"status": "ok"})
 
-        send_order("Sell to Open")
 
-    return jsonify({"status": "order processed"})
-
+# ==========================
+# START SERVER
+# ==========================
 
 if __name__ == "__main__":
 
-    port = int(os.environ.get("PORT", 5000))
+    login_tastytrade()
 
-    login()
-
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
