@@ -13,10 +13,6 @@ BASE_URL = "https://api.tastytrade.com"
 session_token = None
 
 
-# ======================
-# LOGIN
-# ======================
-
 def login():
     global session_token
 
@@ -27,44 +23,43 @@ def login():
 
     r = requests.post(BASE_URL + "/sessions", json=payload)
 
-    if r.status_code != 201:
-        raise Exception("Login failed")
+    try:
+        session_token = r.json()["data"]["session-token"]
+        print("Login successful")
+    except:
+        print("Login failed:", r.text)
+        session_token = None
 
-    session_token = r.json()["data"]["session-token"]
-
-
-login()
-
-
-# ======================
-# GET CURRENT POSITION
-# ======================
 
 def get_position():
 
-    headers = {
-        "Authorization": session_token
-    }
+    if session_token is None:
+        login()
+
+    headers = {"Authorization": session_token}
 
     r = requests.get(
         BASE_URL + f"/accounts/{ACCOUNT}/positions",
         headers=headers
     )
 
-    positions = r.json()["data"]["items"]
+    try:
+        positions = r.json()["data"]["items"]
 
-    for p in positions:
-        if p["symbol"] == "TSLA":
-            return float(p["quantity"])
+        for p in positions:
+            if p["symbol"] == "TSLA":
+                return float(p["quantity"])
+
+    except:
+        print("Position fetch error:", r.text)
 
     return 0
 
 
-# ======================
-# SEND ORDER
-# ======================
-
 def send_order(action):
+
+    if session_token is None:
+        login()
 
     headers = {
         "Authorization": session_token,
@@ -94,18 +89,10 @@ def send_order(action):
     print("RESPONSE:", r.text)
 
 
-# ======================
-# HEALTH CHECK
-# ======================
-
 @app.route("/")
 def home():
     return "Trading bot is running"
 
-
-# ======================
-# WEBHOOK
-# ======================
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -120,39 +107,30 @@ def webhook():
     if signal == "long":
 
         if position > 0:
-            print("Already long")
-            return jsonify({"status": "already_long"})
+            return jsonify({"status": "already long"})
 
         if position < 0:
             send_order("Buy to Close")
 
         send_order("Buy to Open")
 
-
     elif signal == "short":
 
         if position < 0:
-            print("Already short")
-            return jsonify({"status": "already_short"})
+            return jsonify({"status": "already short"})
 
         if position > 0:
             send_order("Sell to Close")
 
         send_order("Sell to Open")
 
+    return jsonify({"status": "order processed"})
 
-    return jsonify({"status": "order_processed"})
-
-
-# ======================
-# RUN SERVER
-# ======================
 
 if __name__ == "__main__":
 
     port = int(os.environ.get("PORT", 5000))
 
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    login()
+
+    app.run(host="0.0.0.0", port=port)
