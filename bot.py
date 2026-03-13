@@ -1,99 +1,82 @@
-from flask import Flask, request
 import requests
+from flask import Flask, request
+import os
 
 app = Flask(__name__)
 
-# ---------------------------
-# TASTYTRADE LOGIN
-# ---------------------------
-USERNAME = "chandra.bathini@gmail.com"
+USERNAME = "chandrda.bathini@gmail.com"
 PASSWORD = "Tasty@2461SML"
 ACCOUNT = "5WZ78228"
 
-BASE_URL = "https://api.tastyworks.com"
+BASE_URL = "https://api.tastytrade.com"
 
-# login
 login_payload = {
     "login": USERNAME,
     "password": PASSWORD
 }
 
 login = requests.post(BASE_URL + "/sessions", json=login_payload)
-session_token = login.json()['data']['session-token']
+
+print("LOGIN RESPONSE:", login.text)
+
+if login.status_code != 201:
+    raise Exception("Tastytrade login failed")
+
+session_token = login.json()["data"]["session-token"]
 
 headers = {
     "Authorization": session_token,
     "Content-Type": "application/json"
 }
 
-last_signal = None
+# ===== TRADE SETTINGS =====
+SYMBOL = "TSLA"
+QUANTITY = 1
 
 
-def buy_tsla():
-
-    order = {
-        "time-in-force": "Day",
-        "order-type": "Market",
-        "legs": [{
-            "instrument-type": "Equity",
-            "symbol": "TSLA",
-            "quantity": 1,
-            "action": "Buy to Open"
-        }]
-    }
-
-    r = requests.post(
-        f"{BASE_URL}/accounts/{ACCOUNT}/orders",
-        headers=headers,
-        json=order
-    )
-
-    print("BUY order response:", r.json())
-
-
-def sell_tsla():
+# ===== PLACE ORDER FUNCTION =====
+def place_order(side):
 
     order = {
         "time-in-force": "Day",
         "order-type": "Market",
-        "legs": [{
-            "instrument-type": "Equity",
-            "symbol": "TSLA",
-            "quantity": 1,
-            "action": "Sell to Close"
-        }]
+        "legs": [
+            {
+                "instrument-type": "Equity",
+                "symbol": SYMBOL,
+                "quantity": QUANTITY,
+                "action": side
+            }
+        ]
     }
 
     r = requests.post(
         f"{BASE_URL}/accounts/{ACCOUNT}/orders",
-        headers=headers,
-        json=order
+        json=order,
+        headers=headers
     )
 
-    print("SELL order response:", r.json())
+    print(r.json())
 
 
-@app.route('/webhook', methods=['POST'])
+# ===== WEBHOOK =====
+@app.route("/webhook", methods=["POST"])
 def webhook():
-
-    global last_signal
 
     data = request.data.decode("utf-8")
 
-    print("Signal received:", data)
+    print("Signal:", data)
 
-    if "long entry" in data.lower() and last_signal != "long":
+    if "LONG" in data:
+        place_order("Buy to Open")
 
-        last_signal = "long"
-        buy_tsla()
+    if "SHORT" in data:
+        place_order("Sell to Open")
 
-    elif "short entry" in data.lower() and last_signal != "short":
-
-        last_signal = "short"
-        sell_tsla()
-
-    return "ok", 200
+    return jsonify({"status": "order received"})
 
 
+# ===== START SERVER =====
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
